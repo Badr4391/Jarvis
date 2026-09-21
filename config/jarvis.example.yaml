@@ -1,0 +1,44 @@
+# Kopiere diese Datei nach config/jarvis.yaml und passe sie an.
+# Werte aus .env bzw. der Umgebung haben Vorrang.
+
+data_dir: ./data
+
+user:
+  name: Badr
+  language: de
+  timezone: Europe/Berlin
+  tone: freundschaftlich, direkt, motivierend
+
+llm:
+  provider: anthropic        # anthropic | ollama | echo
+  model: claude-opus-5
+  max_tokens: 2048
+  temperature: 0.6
+
+voice:
+  tts: auto                  # auto | piper | espeak | say | pyttsx3 | none
+  stt: auto                  # auto | whisper-cpp | faster-whisper | whisper | none
+  language: de
+  record_seconds: 8
+  # piper_model: /opt/piper/de_DE-thorsten-medium.onnx
+  # whisper_cpp_bin: /opt/whisper.cpp/main
+  # whisper_cpp_model: /opt/whisper.cpp/models/ggml-base.bin
+
+market:
+  watchlist: [EURUSD, GBPUSD, XAUUSD, USDJPY, "^GSPC", BTCUSD]
+  news_limit: 8
+  cache_ttl_seconds: 300
+
+trading:
+  default_account: ""        # leer = erstes aktives Konto
+  default_risk_pct: 0.5      # Risiko je Trade in Prozent
+  max_trades_per_day: 3
+  max_risk_per_day_pct: 1.5
+  journal_reminder_hour: 21
+
+briefing:
+  hour: 7
+  minute: 0
+  weekdays_only: false
+  speak: false               # true = Briefing wird morgens vorgelesen
+  sections: [greeting, agenda, tasks, habits, trading, markets, economics, news, focus]

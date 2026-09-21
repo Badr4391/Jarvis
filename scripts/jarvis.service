@@ -1,0 +1,27 @@
+# systemd User-Service: Briefing und Routinen laufen automatisch.
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp scripts/jarvis.service ~/.config/systemd/user/
+#   # WorkingDirectory und ExecStart anpassen
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now jarvis
+#   systemctl --user status jarvis
+#   journalctl --user -u jarvis -f
+#
+# Damit der Dienst auch ohne aktive Sitzung läuft:
+#   sudo loginctl enable-linger $USER
+
+[Unit]
+Description=Jarvis - persoenlicher Assistent (Briefing, Rueckblick, Erinnerungen)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Jarvis
+ExecStart=%h/.local/bin/jarvis daemon
+Restart=on-failure
+RestartSec=30
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

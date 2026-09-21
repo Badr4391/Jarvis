@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jarvis runtime data (never commit personal data!)
+data/
+*.db
+*.db-journal
+*.sqlite3
+out/
+briefings/
+audio/
+models/
+*.wav
+*.mp3
+
+# Secrets
+.env
+config/jarvis.yaml
+!config/jarvis.example.yaml
+
+# OS
+.DS_Store

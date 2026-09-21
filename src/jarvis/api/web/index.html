@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis</title>
+<style>
+:root{--bg:#f7f7f5;--fg:#1c1c1a;--muted:#6b6b66;--card:#fff;--line:#e4e4df;
+      --accent:#b4552d;--good:#2f7d52;--bad:#b23c33;--r:14px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141413;--fg:#f0efe9;--muted:#9a9a93;--card:#1e1e1c;--line:#31312e;
+  --accent:#e08050;--good:#58b37f;--bad:#e0705f}}
+:root[data-theme="dark"]{--bg:#141413;--fg:#f0efe9;--muted:#9a9a93;--card:#1e1e1c;
+  --line:#31312e;--accent:#e08050;--good:#58b37f;--bad:#e0705f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);
+       padding:14px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+h1{font-size:1.15rem;margin:0;letter-spacing:-.01em}
+.pill{font-size:.75rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+main{max-width:1080px;margin:0 auto;padding:18px 16px 80px;display:grid;gap:14px;
+     grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;min-width:0}
+.card.wide{grid-column:1/-1}
+h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+   margin:0 0 12px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+ul{list-style:none;margin:0;padding:0}
+li{padding:6px 0;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+li:last-child{border-bottom:0}
+.tick{cursor:pointer;color:var(--muted);user-select:none;flex:0 0 auto}
+.tick:hover{color:var(--accent)}
+.grow{flex:1;min-width:0;overflow-wrap:anywhere}
+.sub{color:var(--muted);font-size:.8rem}
+.up{color:var(--good);font-weight:600}.down{color:var(--bad);font-weight:600}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.kpi div{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.kpi b{display:block;font-size:1.12rem;letter-spacing:-.01em}
+.kpi span{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}
+.badge{padding:2px 9px;border-radius:999px;font-size:.72rem;font-weight:600;border:1px solid}
+.badge.OK{color:var(--good);border-color:var(--good)}
+.badge.VORSICHT{color:var(--accent);border-color:var(--accent)}
+.badge.STOP{color:var(--bad);border-color:var(--bad)}
+#log{max-height:320px;overflow-y:auto;margin-bottom:10px}
+.msg{padding:8px 11px;border-radius:10px;margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.me{background:var(--bg);border:1px solid var(--line)}
+.msg.j{background:var(--card);border-left:3px solid var(--accent);border-radius:0 10px 10px 0}
+form{display:flex;gap:8px}
+input,button{font:inherit;border-radius:10px;border:1px solid var(--line);padding:9px 12px;
+             background:var(--bg);color:var(--fg)}
+input{flex:1;min-width:0}
+button{cursor:pointer;background:var(--accent);color:#fff;border-color:transparent;font-weight:600}
+button.ghost{background:transparent;color:var(--muted);font-weight:500}
+button:disabled{opacity:.5;cursor:default}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;font:inherit}
+.empty{color:var(--muted);font-size:.87rem;padding:4px 0}
+@media(max-width:560px){main{padding:14px 12px 70px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Jarvis</h1>
+  <span class="pill" id="who">…</span>
+  <span class="pill" id="llm">…</span>
+  <span style="flex:1"></span>
+  <button class="ghost" id="theme">Theme</button>
+  <button class="ghost" id="reload">Neu laden</button>
+</header>
+
+<main>
+  <section class="card wide">
+    <h2>Reden <span class="sub" id="chatstate"></span></h2>
+    <div id="log"></div>
+    <form id="chat">
+      <input id="msg" placeholder="Was steht heute an?" autocomplete="off">
+      <button id="send">Senden</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Aufgaben <span class="sub" id="taskcount"></span></h2>
+    <ul id="tasks"></ul>
+    <form id="newtask" style="margin-top:10px">
+      <input id="tasktitle" placeholder="Neue Aufgabe…" autocomplete="off">
+      <button>+</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Gewohnheiten</h2>
+    <ul id="habits"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Trading <span id="guard"></span></h2>
+    <div class="kpi" id="tradingkpi"></div>
+    <ul id="opentrades" style="margin-top:10px"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Märkte</h2>
+    <ul id="markets"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Wirtschaftstermine</h2>
+    <ul id="calendar"></ul>
+  </section>
+
+  <section class="card wide">
+    <h2>Briefing <button class="ghost" id="brief">erzeugen</button></h2>
+    <pre id="briefout" class="empty">Noch nicht erzeugt.</pre>
+  </section>
+</main>
+
+<script>
+const token = new URLSearchParams(location.search).get("token") || "";
+const api = (p) => p + (token ? (p.includes("?") ? "&" : "?") + "token=" + token : "");
+const H = token ? {"X-Jarvis-Token": token} : {};
+
+async function get(path){
+  const r = await fetch(api(path), {headers:H});
+  if(!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+async function post(path, body){
+  const r = await fetch(api(path), {method:"POST",
+    headers:{"Content-Type":"application/json", ...H}, body: JSON.stringify(body)});
+  return r.json();
+}
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const el = (id) => document.getElementById(id);
+const empty = (node, text) => node.innerHTML = `<li class="empty">${esc(text)}</li>`;
+
+async function loadStatus(){
+  try{
+    const s = await get("/api/status");
+    el("who").textContent = s.name + " · " + s.day;
+    el("llm").textContent = s.llm + (s.market_data ? " · Marktdaten" : " · ohne Marktdaten");
+  }catch(e){ el("who").textContent = "offline"; }
+}
+
+async function loadTasks(){
+  const node = el("tasks");
+  try{
+    const t = await get("/api/tasks");
+    const rows = [...(t.overdue||[]).map(x=>[x,"überfällig"]),
+                  ...(t.today||[]).map(x=>[x,"heute"]),
+                  ...(t.someday||[]).map(x=>[x,"offen"])];
+    el("taskcount").textContent = rows.length ? rows.length + " offen" : "";
+    if(!rows.length) return empty(node, "Nichts offen. Stark.");
+    node.innerHTML = rows.map(([x,label]) =>
+      `<li><span class="tick" data-id="${x.id}">☐</span>
+       <span class="grow">${esc(x.title)}<br><span class="sub">${label}${x.due ? " · " + esc(x.due) : ""}</span></span></li>`).join("");
+    node.querySelectorAll(".tick").forEach(b => b.onclick = async () => {
+      await post("/api/task/done", {id: Number(b.dataset.id)}); loadTasks();
+    });
+  }catch(e){ empty(node, "Fehler: " + e.message); }
+}
+
+async function loadHabits(){
+  const node = el("habits");
+  try{
+    const rows = await get("/api/habits");
+    if(!rows.length) return empty(node, "Keine Gewohnheiten angelegt.");
+    node.innerHTML = rows.map(h =>
+      `<li><span class="tick" data-name="${esc(h.name)}">${h.done_today ? "☑" : "☐"}</span>
+       <span class="grow">${esc(h.name)}<br><span class="sub">Streak ${h.streak} Tage · Woche ${h.this_week}/${h.target_per_week}</span></span></li>`).join("");
+    node.querySelectorAll(".tick").forEach(b => b.onclick = async () => {
+      await post("/api/habit", {name: b.dataset.name, done: b.textContent.trim() === "☐"});
+      loadHabits();
+    });
+  }catch(e){ empty(node, "Fehler: " + e.message); }
+}
+
+async function loadTrading(){
+  try{
+    const t = await get("/api/trading");
+    const c = t.currency || "";
+    const g = t.guard;
+    el("guard").innerHTML = g ? `<span class="badge ${g.status}">${g.status}</span>` : "";
+    const num = (v) => `<b class="${v>0?"up":(v<0?"down":"")}">${v>0?"+":""}${v ?? 0}</b>`;
+    el("tradingkpi").innerHTML = !t.account
+      ? `<div><span>Konto</span><b>–</b></div>`
+      : `<div><span>Konto</span><b>${esc(t.balance)} ${esc(c)}</b></div>
+         <div><span>Heute</span>${num(t.realized_today)}</div>
+         <div><span>Gestern</span>${num(t.realized_yesterday)}</div>
+         <div><span>Spielraum</span><b>${g ? g.room : "–"}</b></div>
+         <div><span>Woche</span>${num(t.week?.net_pnl)}</div>
+         <div><span>Treffer</span><b>${t.week?.winrate ?? 0}%</b></div>`;
+    const node = el("opentrades");
+    if(!(t.open_trades||[]).length) node.innerHTML = "";
+    else node.innerHTML = t.open_trades.map(x =>
+      `<li><span class="grow">${esc(x.symbol)} ${esc(x.direction)}<br>
+       <span class="sub">Entry ${esc(x.entry ?? "–")} · SL ${esc(x.stop_loss ?? "–")}</span></span></li>`).join("");
+  }catch(e){ el("tradingkpi").innerHTML = `<div class="empty">Fehler: ${esc(e.message)}</div>`; }
+}
+
+async function loadMarkets(){
+  const node = el("markets");
+  try{
+    const rows = (await get("/api/market")).filter(r => r.price != null);
+    if(!rows.length) return empty(node, "Keine Kurse (FMP_API_KEY fehlt?).");
+    node.innerHTML = rows.map(r => {
+      const ch = Number(r.change_pct ?? 0);
+      return `<li><span class="grow"><b>${esc(r.symbol)}</b> ${esc(r.price)}</span>
+        <span class="${ch>0?"up":(ch<0?"down":"sub")}">${ch>0?"+":""}${ch.toFixed(2)}%</span></li>`;
+    }).join("");
+  }catch(e){ empty(node, "Fehler: " + e.message); }
+}
+
+async function loadCalendar(){
+  const node = el("calendar");
+  try{
+    const rows = await get("/api/calendar?days=1");
+    if(!rows.length) return empty(node, "Heute nichts Großes.");
+    node.innerHTML = rows.slice(0,8).map(e =>
+      `<li><span class="grow"><b>${esc(e.event)}</b><br>
+       <span class="sub">${esc(e.country)} · ${esc(String(e.date||"").slice(11,16))}${
+         e.estimate != null ? " · Prognose " + esc(e.estimate) : ""}</span></span></li>`).join("");
+  }catch(e){ empty(node, "Fehler: " + e.message); }
+}
+
+el("chat").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const input = el("msg"), text = input.value.trim();
+  if(!text) return;
+  const log = el("log");
+  log.insertAdjacentHTML("beforeend", `<div class="msg me">${esc(text)}</div>`);
+  input.value = ""; el("send").disabled = true; el("chatstate").textContent = "denkt…";
+  log.scrollTop = log.scrollHeight;
+  try{
+    const r = await post("/api/chat", {message: text});
+    log.insertAdjacentHTML("beforeend",
+      `<div class="msg j">${esc(r.text || r.error || "(keine Antwort)")}${
+        (r.tools||[]).length ? `<br><span class="sub">${esc(r.tools.join(", "))}</span>` : ""}</div>`);
+    refresh();
+  }catch(e){
+    log.insertAdjacentHTML("beforeend", `<div class="msg j">Fehler: ${esc(e.message)}</div>`);
+  }finally{
+    el("send").disabled = false; el("chatstate").textContent = "";
+    log.scrollTop = log.scrollHeight;
+  }
+};
+
+el("newtask").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const input = el("tasktitle");
+  if(!input.value.trim()) return;
+  await post("/api/task", {title: input.value.trim()});
+  input.value = ""; loadTasks();
+};
+
+el("brief").onclick = async () => {
+  const outNode = el("briefout");
+  outNode.textContent = "erzeuge…"; outNode.className = "empty";
+  try{
+    const b = await get("/api/brief");
+    outNode.textContent = b.markdown; outNode.className = "";
+  }catch(e){ outNode.textContent = "Fehler: " + e.message; }
+};
+
+el("theme").onclick = () => {
+  const now = document.documentElement.getAttribute("data-theme");
+  const next = now === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try{ localStorage.setItem("jarvis-theme", next); }catch(e){}
+};
+try{
+  const saved = localStorage.getItem("jarvis-theme");
+  if(saved) document.documentElement.setAttribute("data-theme", saved);
+}catch(e){}
+
+function refresh(){ loadStatus(); loadTasks(); loadHabits(); loadTrading(); }
+el("reload").onclick = () => { refresh(); loadMarkets(); loadCalendar(); };
+refresh(); loadMarkets(); loadCalendar();
+setInterval(refresh, 120000);
+</script>
+</body>
+</html>
