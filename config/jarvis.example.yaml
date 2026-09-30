@@ -36,6 +36,12 @@ trading:
   max_risk_per_day_pct: 1.5
   journal_reminder_hour: 21
 
+notify:
+  # Kanäle kommen aus der .env (NTFY_TOPIC, TELEGRAM_*).
+  # Warnungen prüft der Daemon alle 15 Minuten zwischen 7 und 23 Uhr.
+  alerts_every_minutes: 15
+  sync_every_minutes: 30
+
 briefing:
   hour: 7
   minute: 0

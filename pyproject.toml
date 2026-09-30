@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jarvis-assistant"
-version = "0.1.0"
-description = "Persoenlicher Assistent fuer Leben, Trading und Maerkte - local-first, mit Stimme."
+version = "0.2.0"
+description = "Persoenlicher Assistent fuer Leben, Trading und Maerkte - local-first, als App aufs Handy."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Badr" }]
-keywords = ["assistant", "trading", "journal", "briefing", "voice", "local-first"]
+keywords = ["assistant", "trading", "journal", "briefing", "voice", "pwa", "local-first"]
 
 # Der Kern laeuft mit der Standardbibliothek. Alles andere ist Komfort.
 dependencies = []
@@ -29,7 +29,12 @@ jarvis = "jarvis.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"jarvis.api" = ["web/*.html"]
+# Ohne diese Zeile fehlen nach `pip install` CSS, JS und Icons - die App
+# wuerde als nackte HTML-Huelle ausgeliefert.
+"jarvis.api" = [
+    "web/*.html", "web/*.css", "web/*.js",
+    "web/*.webmanifest", "web/*.svg", "web/*.png",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

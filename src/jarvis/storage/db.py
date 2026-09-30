@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks (
@@ -148,6 +148,55 @@ CREATE TABLE IF NOT EXISTS briefings (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS goals (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    title        TEXT    NOT NULL,
+    why          TEXT    DEFAULT '',        -- warum dir das wichtig ist
+    category     TEXT    DEFAULT 'general', -- trading | geld | gesundheit | arbeit | privat
+    target_value REAL,                      -- Zielzahl, z.B. 100000
+    start_value  REAL    DEFAULT 0,
+    current_value REAL   DEFAULT 0,
+    unit         TEXT    DEFAULT '',        -- EUR, kg, Trades, Tage ...
+    deadline     TEXT,
+    status       TEXT    DEFAULT 'active',  -- active | done | paused | dropped
+    account_id   INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+    metric       TEXT    DEFAULT '',        -- balance | profit | winrate | manual
+    created_at   TEXT    NOT NULL,
+    done_at      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS goal_log (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    goal_id   INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+    day       TEXT    NOT NULL,
+    value     REAL    NOT NULL,
+    note      TEXT    DEFAULT '',
+    created_at TEXT   NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS balance_history (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    day        TEXT    NOT NULL,
+    balance    REAL    NOT NULL,
+    equity     REAL,
+    source     TEXT    DEFAULT 'manual',    -- manual | fundednext | csv
+    created_at TEXT    NOT NULL,
+    UNIQUE(account_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT    NOT NULL,            -- brief | risiko | ziel | erinnerung | markt
+    title      TEXT    NOT NULL,
+    body       TEXT    DEFAULT '',
+    url        TEXT    DEFAULT '',
+    priority   INTEGER DEFAULT 2,           -- 1 hoch, 2 normal, 3 leise
+    sent_at    TEXT,
+    read_at    TEXT,
+    created_at TEXT    NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -158,7 +207,20 @@ CREATE INDEX IF NOT EXISTS idx_trades_opened ON trades(opened_at);
 CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
 CREATE INDEX IF NOT EXISTS idx_habitlog_day  ON habit_log(day);
 CREATE INDEX IF NOT EXISTS idx_messages_sess ON messages(session, id);
+CREATE INDEX IF NOT EXISTS idx_goals_status   ON goals(status, deadline);
+CREATE INDEX IF NOT EXISTS idx_balance_day    ON balance_history(account_id, day);
+CREATE INDEX IF NOT EXISTS idx_notif_created  ON notifications(created_at);
 """
+
+
+# Spalten, die nach v1 dazukamen. Beim Start werden sie nachgezogen.
+ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("accounts", "equity", "REAL"),
+    ("accounts", "external_id", "TEXT"),
+    ("accounts", "provider", "TEXT DEFAULT ''"),
+    ("accounts", "synced_at", "TEXT"),
+    ("accounts", "login", "TEXT"),
+)
 
 
 def utcnow() -> str:
@@ -180,8 +242,15 @@ class Database:
 
     # ------------------------------------------------------------------ core
     def migrate(self) -> None:
+        """Schema anlegen und fehlende Spalten nachziehen - immer additiv."""
         with self._lock:
             self._conn.executescript(SCHEMA)
+            for table, column, definition in ADDED_COLUMNS:
+                existing = {
+                    row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})")
+                }
+                if column not in existing:
+                    self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
             self._conn.execute(
                 "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",

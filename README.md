@@ -3,10 +3,15 @@
 Ein persönlicher Assistent, der dein Leben ordnet, dein Trading trackt, Märkte und
 Wirtschaftsdaten liest — und morgens sagt, worauf es heute ankommt. Er redet mit dir,
 merkt sich, wer du bist, und verhält sich wie ein Freund, nicht wie ein Formular.
+**Als App auf deinem Handy**, mit Push, wenn es wichtig wird.
 
 Inspiriert von [OpenJarvis](https://github.com/open-jarvis/OpenJarvis): **local-first**.
 Deine Daten liegen in einer SQLite-Datei auf deinem Rechner. Cloud-Dienste werden nur
 aufgerufen, wenn du sie einschaltest.
+
+```bash
+jarvis app --phone      # App im WLAN freigeben → Handy → "Zum Startbildschirm"
+```
 
 ```
 $ jarvis brief
@@ -36,13 +41,17 @@ $ jarvis brief
 
 | Bereich | Was er macht |
 |---|---|
+| **Auf dem Handy** | Installierbare App (PWA): Heute, Trading, Markt, Ziele, Chat — dunkel, schnell, offline lesbar |
 | **Leben ordnen** | Aufgaben mit „morgen"/„freitag"-Erkennung, Gewohnheiten mit Streaks, Notizen, Termine, Stimmungstagebuch |
+| **Ziele verfolgen** | Messbare Ziele mit Deadline, Tempo-Rechnung („vor Plan"/„hinter Plan") und automatischem Fortschritt aus dem Konto |
+| **Kontostände** | FundedNext-Abgleich alle 30 Minuten, Verlaufskurve, Portfolio über alle Konten |
 | **Trading tracken** | Journal mit R-Multiple, Konten (auch Prop-Firm), CSV-Import aus MT4/MT5/cTrader, Kennzahlen, Leck-Analyse |
 | **Risiko bewachen** | Positionsgrößen-Rechner, Prop-Firm-Wachhund (Tages- und Gesamtlimit), CRV-Check |
 | **Markt lesen** | Kurse, SMA/RSI/ATR, Trend-Bias, Support/Resistance, Watchlist-Scan |
 | **Wirtschaft** | Wirtschaftskalender (NFP, CPI, FOMC …), Makro-Dashboard, Nachrichten |
+| **Melden** | Push per ntfy oder Telegram: Briefing, Risikolimit erreicht, Ziel hinter Plan, Zahlen in 30 Minuten |
 | **Morgens briefen** | Ein Briefing als Text, HTML oder vorgelesen — automatisch zur festen Uhrzeit |
-| **Reden** | Text-Chat, Sprachmodus mit Mikrofon und Stimme, Web-Dashboard |
+| **Reden** | Text-Chat, Sprachmodus mit Mikrofon und Stimme |
 | **Sich erinnern** | Langzeitgedächtnis für Ziele, Regeln, Vorlieben — fließt in jede Antwort ein |
 
 ---
@@ -73,11 +82,110 @@ PYTHONPATH=src python3 -m jarvis brief
 
 ```bash
 jarvis init                                   # Konto, Regeln, Gewohnheiten anlegen
+jarvis app                                    # App auf http://127.0.0.1:8765
+jarvis app --phone                            # … und aufs Handy im WLAN
 jarvis brief --html                           # erstes Briefing, auch als HTML
 jarvis chat "was steht heute an?"             # einmalige Frage
-jarvis chat                                   # Gespräch im Terminal
-jarvis serve                                  # Dashboard auf http://127.0.0.1:8765
-jarvis daemon                                 # Briefing automatisch jeden Morgen
+jarvis daemon                                 # alles Weitere läuft von allein
+```
+
+---
+
+## Jarvis aufs Handy
+
+Die App ist eine PWA — keine App-Store-Runde, keine Installation von Fremden,
+alles läuft weiter auf deinem Rechner.
+
+```bash
+jarvis app --phone
+```
+
+Das gibt dir eine Adresse wie `http://192.168.1.42:8765/?token=xK3…` und erzeugt
+automatisch ein Zugangstoken. Auf dem Handy:
+
+1. Gleiches WLAN wie der Rechner
+2. Adresse im Browser öffnen
+3. **iPhone:** Teilen → „Zum Home-Bildschirm" · **Android:** Menü → „App installieren"
+
+Danach startet Jarvis wie eine echte App — eigenes Icon, kein Browser-Rahmen,
+und der letzte Stand ist auch ohne Verbindung lesbar.
+
+<p>
+  <img src="docs/screenshots/heute.png"   alt="Startbildschirm: Vermögen, Verlaufskurven, Risiko-Ampel" width="24%">
+  <img src="docs/screenshots/trading.png" alt="Trading: Tagesstand, Kennzahlen, offene Positionen"      width="24%">
+  <img src="docs/screenshots/ziele.png"   alt="Ziele mit Fortschritt und Tempo"                          width="24%">
+  <img src="docs/screenshots/chat.png"    alt="Chat mit Jarvis"                                          width="24%">
+</p>
+
+**Fünf Bereiche:**
+
+| Tab | Was drin ist |
+|---|---|
+| **Heute** | Vermögen über alle Konten, Verlaufskurve je Konto, Risiko-Ampel, die Rangliste „worauf es heute ankommt", Aufgaben und Gewohnheiten zum Abhaken, Briefing |
+| **Trading** | Tagesstand, Risikopuffer, Kennzahlen über 30 Tage, offene Positionen, letzte Trades, wo du verdienst und wo du verlierst |
+| **Markt** | Kurse deiner Watchlist, Wirtschaftstermine, Makro-Lage, Schlagzeilen |
+| **Ziele** | Fortschrittsbalken, Tempo („vor Plan"), Verlauf, Stand eintragen |
+| **Jarvis** | Chat mit Werkzeugzugriff, Schnellfragen, Einstellungen |
+
+Die App aktualisiert sich von selbst: der Server schiebt Änderungen über eine
+offene Verbindung nach, sobald ein Konto abgeglichen oder eine Warnung ausgelöst wird.
+
+**Von unterwegs** (nicht nur im WLAN): [Tailscale](https://tailscale.com) auf
+Rechner und Handy installieren, dann die Tailscale-IP statt der lokalen nehmen.
+Den Server niemals ohne Token und ohne VPN ins offene Internet stellen — Jarvis
+verweigert das auch aktiv.
+
+---
+
+## Immer auf dem Laufenden — Push
+
+Damit dich Jarvis erreicht, wenn die App zu ist:
+
+```bash
+# Variante A: ntfy (am einfachsten, kein Konto)
+# ntfy-App installieren, ein langes zufälliges Thema abonnieren
+echo 'NTFY_TOPIC=jarvis-badr-x7k2m9q4' >> .env
+
+# Variante B: Telegram
+echo 'TELEGRAM_BOT_TOKEN=123456:ABC...' >> .env
+jarvis notify --chat-id            # zeigt deine Chat-ID
+echo 'TELEGRAM_CHAT_ID=987654321'  >> .env
+
+jarvis notify --test               # kommt das an?
+```
+
+Was Jarvis von selbst meldet, sobald `jarvis daemon` läuft:
+
+- **07:00** das Briefing, in Sprechfassung
+- **alle 15 Min** (7–23 Uhr) Risikolimit erreicht, Ziel hinter Plan,
+  wichtige Zahlen in unter 45 Minuten
+- **21:00** Journal nachtragen, wenn Trades ohne Notiz offen sind
+- **20:30** Tag abschließen
+
+Gleiche Warnung wird nicht zweimal in vier Stunden geschickt.
+
+---
+
+## Kontostände automatisch
+
+```bash
+echo 'FUNDEDNEXT_TOKEN=dein-token' >> .env
+jarvis sync
+```
+
+Das Token holst du dir aus dem eingeloggten FundedNext-Dashboard:
+DevTools → Network → irgendein API-Aufruf → Header `Authorization: Bearer …`.
+Es läuft regelmäßig ab; dann sagt dir Jarvis das im Klartext statt still falsche
+Zahlen zu zeigen.
+
+Jarvis übernimmt Stand, Equity, Phase und — wo die API sie liefert — die echten
+Puffer des Anbieters. Der Daemon gleicht alle 30 Minuten ab und schreibt jeden
+Tag einen Punkt in die Verlaufskurve.
+
+Ohne Anbindung geht es genauso, nur von Hand:
+
+```bash
+jarvis account balance FN-100k 104250
 ```
 
 ---
@@ -125,6 +233,25 @@ jarvis risk rr --entry 1.0850 --sl 1.0820 --tp 1.0940
 Bei Paaren, deren Notierungswährung nicht deine Kontowährung ist (z. B. USDJPY auf einem
 USD-Konto), `--rate` mitgeben: `--rate 0.0067` (= 1/150). Ohne Kurs sagt Jarvis es dir,
 statt still falsch zu rechnen.
+
+### Ziele
+
+```bash
+jarvis goal add "FundedNext Payout" --target 108000 --start 100000 --unit USD \
+                --deadline 2026-12-15 --account FN-100k --metric balance \
+                --why "erste Auszahlung"
+
+jarvis goal add "Auf 78 kg" --target 78 --start 88 --unit kg --deadline 2026-12-01
+jarvis goal progress "78 kg" 85.4
+jarvis goal list
+```
+
+`--metric balance` heißt: das Ziel aktualisiert sich selbst aus dem Kontostand.
+Ziele dürfen auch nach unten gehen (abnehmen, Schulden tilgen) — der Fortschritt
+wird trotzdem richtig herum gerechnet.
+
+Jarvis rechnet dir das Tempo aus: wie viel pro Tag noch nötig ist und ob du vor
+oder hinter Plan liegst. Liegst du zurück, sagt er es dir — per Push.
 
 ### Markt und Wirtschaft
 
@@ -220,11 +347,18 @@ jarvis daemon                                 # läuft im Vordergrund, prüft je
 jarvis daemon --once                          # zeigt nur den Plan
 ```
 
-Der Daemon erledigt drei Dinge:
+Der Daemon erledigt fünf Dinge:
 
-- **07:00** Briefing bauen, als Markdown und HTML nach `data/briefings/` schreiben, auf Wunsch vorlesen
+- **07:00** Kontostände holen, Ziele nachziehen, Briefing bauen (Markdown + HTML nach
+  `data/briefings/`), als Push verschicken, auf Wunsch vorlesen
+- **alle 30 Min** (7–23 Uhr) Kontostände abgleichen und in die Verlaufskurve schreiben
+- **alle 15 Min** (7–23 Uhr) Warnungen prüfen: Risikolimit, Ziele hinter Plan,
+  Wirtschaftstermine in unter 45 Minuten
 - **20:30** Abend-Rückblick erzeugen
 - **21:00** erinnern, wenn Trades ohne Journal-Notiz offen sind
+
+Läuft die App währenddessen offen, bekommt sie jede Änderung sofort — ohne
+Neuladen.
 
 Als Dienst (Linux):
 
@@ -233,23 +367,6 @@ systemctl --user enable --now jarvis    # siehe scripts/jarvis.service
 ```
 
 Uhrzeit und Abschnitte stellst du in `config/jarvis.yaml` ein.
-
----
-
-## Web-Dashboard
-
-```bash
-jarvis serve                                  # http://127.0.0.1:8765
-```
-
-Aufgaben abhaken, Gewohnheiten tracken, Trading-Status, Kurse, Wirtschaftstermine,
-Briefing und ein Chatfenster — alles auf einer Seite, hell und dunkel, auch am Handy.
-
-Im Heimnetz freigeben nur mit Token:
-
-```bash
-JARVIS_WEB_TOKEN=langes-geheimnis jarvis serve --host 0.0.0.0
-```
 
 ---
 
@@ -278,16 +395,20 @@ src/jarvis/
 │   ├── context.py      hält alle Dienste zusammen
 │   ├── memory.py       Langzeitgedächtnis + Gesprächsverlauf
 │   ├── persona.py      die Persönlichkeit (System-Prompt)
-│   └── scheduler.py    tägliche Routinen
+│   └── scheduler.py    tägliche Routinen + Intervall-Jobs
 ├── llm/                Anthropic | Ollama | Offline-Fallback
-├── life/               Aufgaben, Gewohnheiten, Notizen, Termine, Tagebuch
+├── life/               Aufgaben, Gewohnheiten, Notizen, Termine, Tagebuch, Ziele
 ├── trading/            Journal, Kennzahlen, Risiko, CSV-Import
+├── connectors/         Kontostände von außen (FundedNext), Abgleich, Portfolio
+├── notify/             Push per ntfy und Telegram, Warnregeln
 ├── market/             FMP-Client, Indikatoren, Marktservice
 ├── briefing/           Briefing bauen und rendern (Markdown/HTML/Sprache)
 ├── voice/              TTS, STT, Aufnahme, Sprachschleife
-├── skills/             38 Werkzeuge, die das Modell aufrufen kann
+├── skills/             47 Werkzeuge, die das Modell aufrufen kann
 ├── storage/            SQLite
-└── api/                lokales Web-Dashboard
+└── api/
+    ├── server.py       JSON-Schnittstelle + Ereignisstrom
+    └── web/            die App: index.html, app.css, app.js, sw.js, manifest
 ```
 
 Ein **Skill** ist eine normale Python-Funktion mit Dekorator. Sie ist sofort für die
@@ -314,7 +435,8 @@ def habit_log(ctx, name: str) -> dict:
 
 ```bash
 pip install -e ".[dev]"
-pytest                       # 112 Tests, alles ohne Netz
+pytest                       # 201 Tests, alles ohne Netz
+python3 scripts/make_icons.py  # App-Icons neu erzeugen (nur bei Designänderung)
 ruff check src tests
 ```
 
@@ -327,6 +449,10 @@ ruff check src tests
 - Ohne API-Keys verlässt kein Byte deinen Rechner.
 - Mit `ANTHROPIC_API_KEY` gehen Gesprächsinhalte an Anthropic, mit `FMP_API_KEY` gehen
   Symbolnamen an FMP. Wer das nicht will: Ollama nutzen und Marktdaten weglassen.
+- Push-Meldungen enthalten Kontozahlen. Bei ntfy kann jeder mitlesen, der das Thema
+  kennt — nimm einen langen zufälligen Namen oder einen eigenen ntfy-Server.
+- Die App im Netz freizugeben verlangt ein Token. Ohne Token startet Jarvis
+  nicht auf `0.0.0.0` — das ist Absicht, kein Fehler.
 - Sichern heißt: `data/jarvis.db` kopieren. Mehr ist es nicht.
 
 ---

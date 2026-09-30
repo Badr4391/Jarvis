@@ -1,0 +1,26 @@
+{
+  "name": "Jarvis - dein Assistent",
+  "short_name": "Jarvis",
+  "description": "Leben ordnen, Trading tracken, Maerkte lesen.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0d0d",
+  "theme_color": "#0d0d0d",
+  "lang": "de",
+  "dir": "ltr",
+  "categories": ["productivity", "finance"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "Briefing", "url": "/?tab=heute", "description": "Das Briefing fuer heute" },
+    { "name": "Trading", "url": "/?tab=trading", "description": "Kontostand und Risikopuffer" },
+    { "name": "Jarvis fragen", "url": "/?tab=chat", "description": "Direkt ins Gespraech" }
+  ]
+}

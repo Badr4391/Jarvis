@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from jarvis import __version__
@@ -412,6 +413,7 @@ def cmd_daemon(ctx: JarvisContext, args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(ctx: JarvisContext, args: argparse.Namespace) -> int:
+    from jarvis.connectors.sync import build_connectors
     from jarvis.skills.base import load_all
     from jarvis.voice.recorder import available_recorders
     from jarvis.voice.stt import STT
@@ -435,11 +437,20 @@ def cmd_doctor(ctx: JarvisContext, args: argparse.Namespace) -> int:
          "Hinweis": "whisper.cpp oder faster-whisper" if STT(cfg.voice).engine() == "none" else ""},
         {"Bereich": "Mikrofon", "Status": ", ".join(available_recorders()) or "keins",
          "Hinweis": "arecord/sox/ffmpeg" if not available_recorders() else ""},
+        {"Bereich": "Push aufs Handy",
+         "Status": ", ".join(ctx.notify.channels()) or "keiner",
+         "Hinweis": "NTFY_TOPIC oder TELEGRAM_* in .env" if not ctx.notify.channels() else ""},
+        {"Bereich": "Konto-Anbindung",
+         "Status": ", ".join(c.name for c in build_connectors()) or "keine",
+         "Hinweis": "FUNDEDNEXT_TOKEN in .env" if not build_connectors() else ""},
         {"Bereich": "Werkzeuge", "Status": str(len(load_all())), "Hinweis": "Skills geladen"},
         {"Bereich": "Konten", "Status": str(len(ctx.journal.list_accounts())), "Hinweis": ""},
         {"Bereich": "Trades", "Status": str(len(ctx.journal.list_trades(limit=100000))), "Hinweis": ""},
+        {"Bereich": "Ziele", "Status": str(len(ctx.goals.list())),
+         "Hinweis": ", ".join(g["title"] for g in ctx.goals.overview()["hinter_plan"][:2])},
     ]
     out.table(rows, ["Bereich", "Status", "Hinweis"])
+    out.info("\nApp aufs Handy:  jarvis app --phone")
     return 0
 
 
@@ -506,6 +517,169 @@ def cmd_skills(ctx: JarvisContext, args: argparse.Namespace) -> int:
         for skill in sorted(load_all().values(), key=lambda s: (s.category, s.name))
     ]
     out.table(rows, ["Bereich", "Werkzeug", "Beschreibung"], title=f"{len(rows)} Werkzeuge")
+    return 0
+
+
+def cmd_goal(ctx: JarvisContext, args: argparse.Namespace) -> int:
+    goals = ctx.goals
+
+    if args.action == "add":
+        goal = goals.add(
+            " ".join(args.title), target_value=args.target, start_value=args.start or 0.0,
+            current_value=args.current, unit=args.unit or "", deadline=args.deadline,
+            category=args.category, why=args.why or "", account=args.account,
+            metric=args.metric or "",
+        )
+        out.ok(f"[{goal['id']}] {goal['title']}"
+               + (f" - Ziel {goal['target_value']} {goal['unit']}" if goal.get("target_value") else ""))
+
+    elif args.action == "progress":
+        goal = goals.get(args.ref) if str(args.ref).isdigit() else goals.find(args.ref)
+        if not goal:
+            out.error("Ziel nicht gefunden")
+            return 1
+        updated = goals.log_progress(goal["id"], args.value, note=args.note or "")
+        out.ok(f"{updated['title']}: {updated['current_value']} {updated['unit']} "
+               f"({updated['progress_pct']}%, {updated['pace']})")
+        if updated["status"] == "done":
+            out.ok("Ziel erreicht. Stark.")
+
+    elif args.action == "done":
+        goal = goals.get(args.ref) if str(args.ref).isdigit() else goals.find(args.ref)
+        if not goal:
+            out.error("Ziel nicht gefunden")
+            return 1
+        goals.complete(goal["id"])
+        out.ok(f"Erreicht: {goal['title']}")
+
+    goals.sync_auto_goals(ctx.journal)
+    rows = goals.list(status="all" if getattr(args, "all", False) else "active")
+    if not rows:
+        out.info("Noch keine Ziele. `jarvis goal add \"...\" --target 100 --deadline 2026-12-31`")
+        return 0
+    out.head("Ziele")
+    out.table(
+        [
+            {
+                "id": g["id"], "Ziel": g["title"],
+                "Stand": f"{g['current_value']} {g['unit']}".strip(),
+                "Ziel-Wert": f"{g['target_value']} {g['unit']}".strip() if g.get("target_value") else "",
+                "%": g["progress_pct"] if g["progress_pct"] is not None else "",
+                "Tempo": g["pace"], "Rest-Tage": g["days_left"] if g["days_left"] is not None else "",
+            }
+            for g in rows
+        ],
+        ["id", "Ziel", "Stand", "Ziel-Wert", "%", "Tempo", "Rest-Tage"],
+    )
+    behind = [g for g in rows if g["pace"] in ("hinter Plan", "ueberfaellig")]
+    if behind:
+        out.warn(f"{len(behind)} Ziel(e) hinter Plan: " + ", ".join(g["title"] for g in behind))
+    return 0
+
+
+def cmd_sync(ctx: JarvisContext, args: argparse.Namespace) -> int:
+    out.head("Kontostaende abgleichen")
+    result = ctx.sync.run()
+    for entry in result["konten"]:
+        out.ok(f"{entry['name']}: {entry['balance']}" + (" (neu)" if entry["neu"] else ""))
+    for error in result["fehler"]:
+        out.warn(error)
+    updated = ctx.goals.sync_auto_goals(ctx.journal)
+    if updated:
+        out.info("Ziele aktualisiert: " + ", ".join(g["title"] for g in updated))
+
+    portfolio = ctx.sync.portfolio()
+    if portfolio["konten"]:
+        out.head("Portfolio")
+        out.table(
+            [
+                {"Konto": a["name"], "Stand": a["balance"], "Waehrung": a["currency"],
+                 "Gewinn": a["pnl"], "%": a["pnl_pct"],
+                 "Wachhund": (a["guard"] or {}).get("status", ""),
+                 "Quelle": a["provider"]}
+                for a in portfolio["konten"]
+            ],
+            ["Konto", "Stand", "Waehrung", "Gewinn", "%", "Wachhund", "Quelle"],
+        )
+        out.info(f"Gesamt: {portfolio['gesamt']} ({out.money(portfolio['gesamt_pnl'])})")
+    return 0
+
+
+def cmd_notify(ctx: JarvisContext, args: argparse.Namespace) -> int:
+    from jarvis.notify.base import Notification
+    from jarvis.notify.center import collect_alerts
+
+    if args.chat_id:
+        from jarvis.notify.telegram import TelegramNotifier
+
+        chat_id = TelegramNotifier.from_env().discover_chat_id()
+        if chat_id:
+            out.ok(f"Deine Chat-ID: {chat_id}")
+            out.info(f"In die .env schreiben:  TELEGRAM_CHAT_ID={chat_id}")
+        else:
+            out.warn("Keine Nachricht gefunden. Schreib dem Bot erst einmal etwas.")
+        return 0
+
+    if args.test:
+        result = ctx.notify.test()
+        if result["gesendet"]:
+            out.ok("Verschickt ueber: " + ", ".join(result["gesendet"]))
+        else:
+            out.warn("Kein Kanal eingerichtet. NTFY_TOPIC oder TELEGRAM_* in die .env.")
+        return 0
+
+    if args.send:
+        result = ctx.notify.push(Notification(kind="erinnerung", title=" ".join(args.send)))
+        out.ok("Verschickt" if result["gesendet"] else "Nur gespeichert (kein Kanal aktiv)")
+        return 0
+
+    if args.check:
+        alerts = collect_alerts(ctx)
+        if not alerts:
+            out.ok("Nichts Dringendes.")
+            return 0
+        out.head(f"{len(alerts)} Warnung(en)")
+        for alert in alerts:
+            (out.error if alert.priority == 1 else out.warn)(f"{alert.title} - {alert.body}")
+            ctx.notify.push(alert, dedupe_hours=4)
+        return 0
+
+    out.head(f"Meldungen (Kanaele: {', '.join(ctx.notify.channels()) or 'keine'})")
+    out.table(ctx.notify.inbox(limit=args.limit), ["id", "created_at", "kind", "title", "body"])
+    if args.read:
+        out.ok(f"{ctx.notify.mark_read()} als gelesen markiert")
+    return 0
+
+
+def cmd_app(ctx: JarvisContext, args: argparse.Namespace) -> int:
+    """Die App starten und erklaeren, wie sie aufs Handy kommt."""
+    import secrets
+    import socket
+
+    from jarvis.api.server import serve
+
+    host = "0.0.0.0" if args.phone else args.host
+    if args.phone and not os.environ.get("JARVIS_WEB_TOKEN"):
+        os.environ["JARVIS_WEB_TOKEN"] = secrets.token_urlsafe(24)
+
+    if args.phone:
+        try:
+            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            probe.connect(("10.255.255.255", 1))
+            local_ip = probe.getsockname()[0]
+            probe.close()
+        except OSError:
+            local_ip = "<IP-dieses-Rechners>"
+        token = os.environ["JARVIS_WEB_TOKEN"]
+        out.head("Jarvis aufs Handy")
+        out.info("1. Handy ins gleiche WLAN wie dieser Rechner")
+        out.info(f"2. Im Browser oeffnen:  http://{local_ip}:{args.port}/?token={token}")
+        out.info("3. Menue -> 'Zum Startbildschirm hinzufuegen'")
+        out.info("   Danach startet Jarvis wie eine echte App, ohne Adressleiste.")
+        out.warn("Das Token nicht weitergeben - es ist der Schluessel zu deinen Daten.")
+        print()
+
+    serve(ctx, host=host, port=args.port)
     return 0
 
 
@@ -724,8 +898,55 @@ def build_parser() -> argparse.ArgumentParser:
     memory_sub.add_parser("list")
     memory.set_defaults(func=cmd_memory)
 
+    # ziele
+    goal = sub.add_parser("goal", help="Ziele mit Fortschritt und Tempo")
+    goal_sub = goal.add_subparsers(dest="action", required=True)
+    goal_add = goal_sub.add_parser("add")
+    goal_add.add_argument("title", nargs="+")
+    goal_add.add_argument("--target", type=float, help="Zielwert")
+    goal_add.add_argument("--start", type=float, help="Ausgangswert")
+    goal_add.add_argument("--current", type=float)
+    goal_add.add_argument("--unit", help="USD, EUR, kg ...")
+    goal_add.add_argument("--deadline", help="2026-12-31 oder 'freitag'")
+    goal_add.add_argument("--category", default="general",
+                          choices=["trading", "geld", "gesundheit", "arbeit", "privat", "general"])
+    goal_add.add_argument("--why", help="Warum ist dir das wichtig?")
+    goal_add.add_argument("--account", help="Konto fuer automatische Fortschritte")
+    goal_add.add_argument("--metric", choices=["balance", "profit", "winrate", "trades"])
+    goal_progress = goal_sub.add_parser("progress")
+    goal_progress.add_argument("ref", help="id oder Stichwort")
+    goal_progress.add_argument("value", type=float)
+    goal_progress.add_argument("--note")
+    goal_done = goal_sub.add_parser("done")
+    goal_done.add_argument("ref")
+    goal_list = goal_sub.add_parser("list")
+    goal_list.add_argument("--all", action="store_true")
+    goal.set_defaults(func=cmd_goal)
+
+    # konten abgleichen
+    sync = sub.add_parser("sync", help="Kontostaende beim Anbieter abholen")
+    sync.set_defaults(func=cmd_sync)
+
+    # benachrichtigungen
+    notify = sub.add_parser("notify", help="Meldungen aufs Handy")
+    notify.add_argument("send", nargs="*", help="Text sofort verschicken")
+    notify.add_argument("--test", action="store_true", help="Testmeldung schicken")
+    notify.add_argument("--check", action="store_true", help="Warnungen pruefen und senden")
+    notify.add_argument("--chat-id", action="store_true", help="Telegram-Chat-ID ermitteln")
+    notify.add_argument("--read", action="store_true", help="alle als gelesen markieren")
+    notify.add_argument("--limit", type=int, default=20)
+    notify.set_defaults(func=cmd_notify)
+
+    # app
+    app = sub.add_parser("app", help="Die App starten (auch fuers Handy)")
+    app.add_argument("--phone", action="store_true",
+                     help="im WLAN freigeben und Anleitung fuers Handy zeigen")
+    app.add_argument("--host", default="127.0.0.1")
+    app.add_argument("--port", type=int, default=8765)
+    app.set_defaults(func=cmd_app)
+
     # system
-    serve = sub.add_parser("serve", help="Web-Dashboard starten")
+    serve = sub.add_parser("serve", help="Web-Dashboard starten (wie 'app')")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
     serve.set_defaults(func=cmd_serve)

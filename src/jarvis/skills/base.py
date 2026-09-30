@@ -66,8 +66,9 @@ def skill(
 
 def load_all() -> dict[str, Skill]:
     """Importiert alle Skill-Module (Seiteneffekt: Registrierung)."""
-    from jarvis.skills import (  # noqa: F401  # noqa: F401
+    from jarvis.skills import (  # noqa: F401
         briefing_skills,
+        goal_skills,
         life_skills,
         market_skills,
         memory_skills,

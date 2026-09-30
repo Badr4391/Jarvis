@@ -6,10 +6,13 @@ from dataclasses import dataclass, field
 from functools import cached_property
 
 from jarvis.config import Config, get_config
+from jarvis.connectors.sync import AccountSync
 from jarvis.core.memory import Memory
+from jarvis.life.goals import GoalManager
 from jarvis.life.manager import LifeManager
 from jarvis.market.fmp import FMPClient
 from jarvis.market.service import MarketService
+from jarvis.notify.center import NotificationCenter
 from jarvis.storage.db import Database, get_db
 from jarvis.trading.journal import TradingJournal
 
@@ -37,8 +40,20 @@ class JarvisContext:
         return LifeManager(self.db)
 
     @cached_property
+    def goals(self) -> GoalManager:
+        return GoalManager(self.db)
+
+    @cached_property
     def journal(self) -> TradingJournal:
         return TradingJournal(self.db)
+
+    @cached_property
+    def sync(self) -> AccountSync:
+        return AccountSync(db=self.db, journal=self.journal)
+
+    @cached_property
+    def notify(self) -> NotificationCenter:
+        return NotificationCenter(db=self.db)
 
     @cached_property
     def market(self) -> MarketService:

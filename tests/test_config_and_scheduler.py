@@ -94,3 +94,80 @@ def test_next_run_is_in_the_future():
     job = DailyJob(name="x", hour=7, minute=0, action=lambda: None)
     now = datetime(2026, 9, 21, 9, 0)
     assert job.next_run(now) > now
+
+
+# --------------------------------------------------------------- intervalle
+
+
+def test_interval_job_respects_its_period():
+    runs = []
+    scheduler = Scheduler(logger=lambda _: None)
+    scheduler.every("warnungen", 15, lambda: runs.append(1))
+
+    assert scheduler.tick(datetime(2026, 9, 21, 9, 0)) == ["warnungen"]
+    assert scheduler.tick(datetime(2026, 9, 21, 9, 10)) == []
+    assert scheduler.tick(datetime(2026, 9, 21, 9, 16)) == ["warnungen"]
+    assert len(runs) == 2
+
+
+def test_interval_job_only_inside_its_window():
+    scheduler = Scheduler(logger=lambda _: None)
+    scheduler.every("warnungen", 15, lambda: None, start_hour=7, end_hour=23)
+    assert scheduler.tick(datetime(2026, 9, 21, 3, 0)) == []
+    assert scheduler.tick(datetime(2026, 9, 21, 23, 30)) == []
+    assert scheduler.tick(datetime(2026, 9, 21, 7, 0)) == ["warnungen"]
+
+
+def test_interval_job_can_skip_weekends():
+    scheduler = Scheduler(logger=lambda _: None)
+    scheduler.every("konten", 30, lambda: None, weekdays_only=True)
+    assert scheduler.tick(datetime(2026, 9, 19, 10, 0)) == []      # Samstag
+    assert scheduler.tick(datetime(2026, 9, 21, 10, 0)) == ["konten"]
+
+
+def test_failing_interval_job_does_not_stop_the_others():
+    messages = []
+    scheduler = Scheduler(logger=messages.append)
+
+    def boom():
+        raise RuntimeError("kaputt")
+
+    scheduler.every("kaputt", 10, boom)
+    scheduler.every("gut", 10, lambda: None)
+    assert scheduler.tick(datetime(2026, 9, 21, 9, 0)) == ["gut"]
+    assert any("kaputt" in m for m in messages)
+
+
+def test_plan_lists_both_job_kinds():
+    scheduler = Scheduler(logger=lambda _: None)
+    scheduler.add("briefing", 7, 0, lambda: None)
+    scheduler.every("warnungen", 15, lambda: None)
+    names = " ".join(row["job"] for row in scheduler.plan())
+    assert "briefing" in names and "warnungen" in names
+
+
+def test_default_scheduler_has_the_full_routine(ctx):
+    from jarvis.core.scheduler import build_default_scheduler
+
+    scheduler = build_default_scheduler(ctx, logger=lambda _: None)
+    names = {job.name for job in scheduler.jobs} | {job.name for job in scheduler.interval_jobs}
+    assert names == {"morgen-briefing", "abend-rueckblick", "journal-erinnerung",
+                     "konten-abgleich", "warnungen"}
+
+
+def test_alert_job_pushes_and_dedupes(ctx):
+    """Der Kern des Handy-Versprechens: warnen, aber nicht spammen."""
+    from datetime import date as _date
+
+    from jarvis.core.scheduler import build_default_scheduler
+
+    ctx.journal.add_account("FN", start_balance=100_000)
+    ctx.journal.log_trade(symbol="X", direction="long", pnl=-5_000,
+                          closed_at=f"{_date.today().isoformat()}T10:00:00")
+
+    scheduler = build_default_scheduler(ctx, logger=lambda _: None)
+    alert_job = next(j for j in scheduler.interval_jobs if j.name == "warnungen")
+    alert_job.action()
+    alert_job.action()
+    titles = [n["title"] for n in ctx.notify.inbox()]
+    assert len([t for t in titles if t.startswith("STOP")]) == 1
